@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Backrooms · Memória Falha</title>
+<style>
+:root{--bg:#111110;--paper:#e6e2d6;--ink:#2b2508;--dim:#8d8a80;--line:#45433b}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--paper);font-family:"Courier New",ui-monospace,monospace;display:flex;justify-content:center;padding:20px 14px 40px}
+main{width:100%;max-width:640px;display:flex;flex-direction:column;gap:14px}
+h1{font-size:20px;margin:0;letter-spacing:.5px;font-weight:700}
+p.sub{margin:0;color:var(--dim);font-size:13px;line-height:1.5}
+.frame{border:2px dashed var(--line);background:#1a1a18;aspect-ratio:3/2;display:flex;align-items:center;justify-content:center;overflow:hidden;color:var(--dim);font-size:13px;text-align:center;padding:10px}
+.frame img,.frame canvas{width:100%;height:100%;object-fit:contain;display:block}
+button,label.btn{font:inherit;font-weight:700;background:var(--paper);color:var(--ink);border:0;padding:14px;cursor:pointer;text-align:center;display:block;width:100%}
+button:focus-visible,label.btn:focus-within{outline:3px solid #fff;outline-offset:2px}
+button.alt{background:transparent;color:var(--paper);border:2px solid var(--paper)}
+.row{display:flex;gap:10px}
+.row>*{flex:1}
+.ctrl{display:flex;flex-direction:column;gap:6px;font-size:13px}
+input[type=range]{width:100%;accent-color:var(--paper)}
+input[type=file]{position:absolute;width:1px;height:1px;opacity:0;overflow:hidden;pointer-events:none}
+#out{border:2px solid var(--paper);background:#000;aspect-ratio:auto}#out canvas{height:auto}
+#info{font-size:12px;color:var(--dim)}
+</style>
+</head>
+<body>
+<main>
+<h1>Backrooms · Memória Falha</h1>
+<p class="sub">Importe uma imagem e a IA tenta lembrar dela e erra: olhos a mais, rostos derretidos, texto corrompido e setas vermelhas. Sem imagem, ela inventa um corredor.</p>
+
+<div class="frame" id="prev">Nenhuma imagem importada</div>
+<button id="imp" type="button">Importar imagem</button>
+<input type="file" id="file" accept="image/*,.jpg,.jpeg,.png,.webp,.gif,.bmp,.avif">
+
+<div class="frame" id="out"><canvas id="cv" width="768" height="512"></canvas></div>
+
+<div class="ctrl">
+  <label for="int">Quanto a memória falha: <b id="iv">70</b>%</label>
+  <input type="range" id="int" min="5" max="100" value="70">
+</div>
+<div class="row">
+  <button id="gen">Gerar de novo</button>
+  <button id="dl" class="alt">Baixar PNG</button>
+</div>
+<div id="info"></div>
+</main>
+
+<script>
+let W=768,H=512;
+const cv=document.getElementById('cv'),ctx=cv.getContext('2d',{willReadFrequently:true});
+let srcImg=null,seed=1;
+function rng(a){return function(){a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296}}
+const lerp=(a,b,t)=>a+(b-a)*t, ri=(R,a,b)=>a+R()*(b-a);
+function setSize(w,h){W=w;H=h;cv.width=w;cv.height=h}
+function snap(){const t=document.createElement('canvas');t.width=W;t.height=H;t.getContext('2d').drawImage(cv,0,0);return t}
+
+/* Sem imagem: corredor sem tinta amarela forte */
+function scene(c,R){
+  const vx=W*(.3+.4*R()),vy=H*(.4+.12*R()),rw=W*(.1+.2*R()),rh=rw*(.6+.3*R());
+  const bx0=vx-rw/2,bx1=vx+rw/2,by0=vy-rh/2,by1=vy+rh/2;
+  const poly=(pts,f)=>{c.beginPath();pts.forEach((q,i)=>i?c.lineTo(q[0],q[1]):c.moveTo(q[0],q[1]));c.closePath();c.fillStyle=f;c.fill()};
+  poly([[0,0],[W,0],[bx1,by0],[bx0,by0]],'#8d8c84');
+  poly([[0,H],[W,H],[bx1,by1],[bx0,by1]],'#4a4a45');
+  poly([[0,0],[bx0,by0],[bx0,by1],[0,H]],'#a19f93');
+  poly([[W,0],[bx1,by0],[bx1,by1],[W,H]],'#97958a');
+  poly([[bx0,by0],[bx1,by0],[bx1,by1],[bx0,by1]],'#6f6e66');
+  for(let i=0;i<9;i++){const s=i*.55+.1,f1=1-1/(1+s),f2=1-1/(1+s+.3);
+    const P=(f,u)=>[lerp(lerp(0,bx0,f),lerp(W,bx1,f),u),lerp(0,by0,f)];
+    poly([P(f1,.3),P(f1,.7),P(f2,.7),P(f2,.3)],'#f4f4ee');}
+  c.fillStyle='rgba(8,8,8,.7)';c.fillRect(bx0+rw*.3,by0+rh*.3,rw*.3,rh*.7);
+}
+
+/* Olhos/feições duplicadas em lugares errados */
+function extraFeatures(R,I){
+  const s=snap(),n=Math.floor(3+I*16);
+  for(let i=0;i<n;i++){
+    const r=ri(R,10,Math.min(W,H)*.07),sx=r+R()*(W-2*r),sy=r+R()*(H-2*r);
+    const dx=R()<.7?sx+(R()-.5)*W*.25:R()*W,dy=R()<.7?sy+(R()-.5)*H*.25:R()*H,sc=ri(R,.7,1.5);
+    const t=document.createElement('canvas');t.width=t.height=r*2;const tc=t.getContext('2d');
+    tc.drawImage(s,sx-r,sy-r,r*2,r*2,0,0,r*2,r*2);
+    tc.globalCompositeOperation='destination-in';
+    const g=tc.createRadialGradient(r,r,r*.35,r,r,r);g.addColorStop(0,'#000');g.addColorStop(1,'rgba(0,0,0,0)');
+    tc.fillStyle=g;tc.fillRect(0,0,r*2,r*2);
+    ctx.globalAlpha=ri(R,.6,1);ctx.drawImage(t,dx-r*sc,dy-r*sc,r*2*sc,r*2*sc);
+  }
+  ctx.globalAlpha=1;
+}
+/* Pixels esticados (derretimento) */
+function smears(R,I){
+  const s=snap(),n=Math.floor(2+I*9);
+  for(let i=0;i<n;i++){
+    const w=ri(R,W*.06,W*.3),h=ri(R,H*.05,H*.25),x=R()*(W-w),y=R()*(H-h);
+    if(R()<.5)ctx.drawImage(s,x,y,2,h,x,y,w,h);else ctx.drawImage(s,x,y,w,2,x,y,w,h);
+  }
+}
+/* Fantasmas e áreas pixelizadas */
+function ghosts(R,I){
+  const s=snap(),n=Math.floor(1+I*5);
+  for(let i=0;i<n;i++){
+    const w=ri(R,W*.15,W*.4),h=ri(R,H*.15,H*.4),x=R()*(W-w),y=R()*(H-h);
+    ctx.globalAlpha=ri(R,.3,.55);const k=ri(R,1,1.12);
+    ctx.drawImage(s,x,y,w,h,x+(R()-.5)*30,y+(R()-.5)*30,w*k,h*k);
+  }
+  ctx.globalAlpha=1;
+  const m=Math.floor(1+I*4),t=document.createElement('canvas'),tc=t.getContext('2d');
+  for(let i=0;i<m;i++){
+    const w=ri(R,40,W*.3),h=ri(R,40,H*.3),x=R()*(W-w),y=R()*(H-h),d=ri(R,5,12);
+    t.width=Math.max(2,w/d|0);t.height=Math.max(2,h/d|0);
+    tc.imageSmoothingEnabled=true;tc.drawImage(cv,x,y,w,h,0,0,t.width,t.height);
+    ctx.imageSmoothingEnabled=R()<.5;ctx.drawImage(t,0,0,t.width,t.height,x,y,w,h);ctx.imageSmoothingEnabled=true;
+  }
+}
+/* Deformação local por pixel */
+function warp(R,I){
+  const src=ctx.getImageData(0,0,W,H),out=ctx.createImageData(W,H),s=src.data,o=out.data;
+  const GX=12,GY=9,gx=[],gy=[];for(let i=0;i<(GX+1)*(GY+1);i++){gx.push(R()*2-1);gy.push(R()*2-1)}
+  const amp=2+I*14,nc=3+Math.floor(I*8),C=[],ca=1+I*3,sz=Math.min(W,H);
+  for(let i=0;i<nc;i++)C.push([R()*W,R()*H,sz*ri(R,.05,.22),(R()-.5)*(3+I*7)]);
+  const melt=[];for(let i=0;i<=20;i++)melt.push(R()<.3?R():0);
+  const grid=(g,x,y)=>{const u=x/W*GX,v=y/H*GY,i=Math.min(GX-1,u|0),j=Math.min(GY-1,v|0),a=u-i,b=v-j,q=j*(GX+1)+i;
+    return lerp(lerp(g[q],g[q+1],a),lerp(g[q+GX+1],g[q+GX+2],a),b)};
+  const cl=(v,m)=>v<0?0:v>m?m:v;
+  for(let y=0;y<H;y++)for(let x=0;x<W;x++){
+    let px=x+grid(gx,x,y)*amp,py=y+grid(gy,x,y)*amp;
+    const m=x/W*20,mi=m|0;py-=lerp(melt[mi],melt[Math.min(20,mi+1)],m-mi)*I*50*(y/H);
+    for(let k=0;k<nc;k++){const c=C[k],ox=px-c[0],oy=py-c[1],d=Math.hypot(ox,oy);
+      if(d<c[2]){const t=1-d/c[2],a=c[3]*t*t,co=Math.cos(a),si=Math.sin(a);px=c[0]+ox*co-oy*si;py=c[1]+ox*si+oy*co}}
+    const yy=cl(py|0,H-1)*W*4,i=(y*W+x)*4;
+    o[i]=s[yy+cl(px+ca|0,W-1)*4];o[i+1]=s[yy+cl(px|0,W-1)*4+1];o[i+2]=s[yy+cl(px-ca|0,W-1)*4+2];o[i+3]=255;
+  }
+  ctx.putImageData(out,0,0);
+}
+/* Texto corrompido estilo meme */
+const LOOK={A:'Ä',E:'Ξ',S:'§',O:'0',I:'|',L:'Ł',G:'6',N:'И',R:'Я',T:'Ŧ',U:'Ц',D:'Ð',K:'Ж'};
+const WORDS=['ACTUALLY GENIUS','OUR BRAINS ARE SHRINKING','IS IT REALLY DREAD?','WHO IS THIS?','THEY LIED','DON\'T LOOK','REMEMBER ME','WHAT IS THAT?','NOT REAL','HELP'];
+function glitchText(R,I,str,y,size,color){
+  let t='';for(const ch of str.toUpperCase()){t+=(R()<.12+I*.3&&LOOK[ch])?LOOK[ch]:(R()<.04*I?'#':ch)}
+  const tw=document.createElement('canvas');tw.width=W;tw.height=size*1.5|0;const c=tw.getContext('2d');
+  c.font=`900 ${size}px Impact,'Arial Black',sans-serif`;c.textAlign='center';c.textBaseline='middle';
+  c.lineJoin='round';c.lineWidth=size/5;c.strokeStyle='#000';c.fillStyle=color;
+  let fs=size;while(c.measureText(t).width>W*.94&&fs>10){fs-=2;c.font=`900 ${fs}px Impact,'Arial Black',sans-serif`}
+  c.strokeText(t,W/2,tw.height/2);c.fillText(t,W/2,tw.height/2);
+  let yy=0;
+  while(yy<tw.height){const h=ri(R,4,14)|0,sh=R()<.5?(R()-.5)*size*(.2+I)*.8:0;
+    ctx.drawImage(tw,0,yy,W,h,sh,y+yy,W,h);yy+=h}
+  if(R()<.7){ctx.globalAlpha=.4;ctx.drawImage(tw,(R()-.5)*size*.4,y+(R()-.5)*size*.3);ctx.globalAlpha=1}
+}
+/* Anotações vermelhas: seta, círculo, ? */
+function arrow(R,x,y,ang,len){
+  ctx.save();ctx.translate(x,y);ctx.rotate(ang);
+  ctx.shadowColor='#f22';ctx.shadowBlur=14;ctx.fillStyle='#e01515';
+  ctx.beginPath();[[0,-9],[len*.6,-9],[len*.6,-26],[len,0],[len*.6,26],[len*.6,9],[0,9]].forEach((q,i)=>i?ctx.lineTo(q[0],q[1]):ctx.moveTo(q[0],q[1]));
+  ctx.closePath();ctx.fill();ctx.restore();
+}
+function annotate(R,I){
+  const u=Math.min(W,H);
+  if(R()<.85)arrow(R,R()*W*.7+W*.1,R()*H*.6+H*.1,R()*6.28,u*ri(R,.12,.22));
+  if(R()<.6){const x=R()*W*.8+W*.1,y=R()*H*.7+H*.15,r=u*ri(R,.07,.2);
+    ctx.save();ctx.strokeStyle='#e01515';ctx.lineWidth=u*.012+2;ctx.shadowColor='#f22';ctx.shadowBlur=8;
+    for(let k=0;k<2;k++){ctx.beginPath();ctx.ellipse(x,y,r,r*ri(R,.85,1.1),R()*3,0,6.1+R()*.4);ctx.stroke()}ctx.restore()}
+  if(R()<.5){ctx.save();ctx.font=`900 ${u*ri(R,.15,.28)}px Impact,sans-serif`;ctx.fillStyle='#e01515';ctx.shadowColor='#f22';ctx.shadowBlur=14;
+    ctx.translate(R()*W*.85,u*.3+R()*H*.5);ctx.rotate((R()-.5)*.5);ctx.fillText('?',0,0);ctx.restore()}
+}
+/* Acabamento: compressão ruim e ruído */
+function finish(R,I){
+  const t=document.createElement('canvas'),k=ri(R,.45,.7);t.width=W*k|0;t.height=H*k|0;
+  t.getContext('2d').drawImage(cv,0,0,t.width,t.height);ctx.drawImage(t,0,0,W,H);
+  const d=ctx.getImageData(0,0,W,H),p=d.data,n=6+I*22;
+  for(let i=0;i<p.length;i+=4){const v=(R()-.5)*n;p[i]+=v;p[i+1]+=v;p[i+2]+=v}
+  ctx.putImageData(d,0,0);
+}
+
+function generate(){
+  seed=(Math.random()*1e9)|0;const I=document.getElementById('int').value/100,R=rng(seed);
+  if(srcImg){const k=800/Math.max(srcImg.width,srcImg.height);setSize(Math.round(srcImg.width*k),Math.round(srcImg.height*k));ctx.drawImage(srcImg,0,0,W,H)}
+  else{setSize(768,512);scene(ctx,R)}
+  extraFeatures(R,I);smears(R,I);ghosts(R,I);warp(R,I);
+  if(I>.55){extraFeatures(R,I*.5);warp(R,I*.4)}
+  if(R()<.55+I*.4){const u=Math.min(W,H),sz=u*.12;
+    const a=WORDS[Math.floor(R()*WORDS.length)];
+    glitchText(R,I,a,R()<.6?H*.01:H-sz*1.6,sz,R()<.5?'#fff':'#e01515');}
+  annotate(R,I);finish(R,I);
+  document.getElementById('info').textContent='semente '+seed+(srcImg?' · com imagem importada':' · sem imagem');
+}
+
+const fileIn=document.getElementById('file'),info=document.getElementById('info');
+function loadFile(f){
+  if(!f)return;const rd=new FileReader();
+  rd.onerror=()=>{info.textContent='Não consegui ler o arquivo. Tente outra imagem.'};
+  rd.onload=()=>{const img=new Image();
+    img.onerror=()=>{info.textContent='Formato não suportado pelo navegador (ex.: HEIC). Use JPG, PNG ou WebP.'};
+    img.onload=()=>{srcImg=img;const pv=document.getElementById('prev');pv.innerHTML='';pv.style.border='2px solid var(--line)';
+      const t=new Image();t.src=rd.result;pv.appendChild(t);generate()};
+    img.src=rd.result};
+  rd.readAsDataURL(f);
+}
+document.getElementById('imp').onclick=()=>{fileIn.value='';fileIn.click()};
+fileIn.addEventListener('change',e=>loadFile(e.target.files&&e.target.files[0]));
+document.addEventListener('dragover',e=>e.preventDefault());
+document.addEventListener('drop',e=>{e.preventDefault();loadFile(e.dataTransfer.files[0])});
+document.addEventListener('paste',e=>{const it=[...(e.clipboardData?e.clipboardData.items:[])].find(i=>i.type.startsWith('image/'));if(it)loadFile(it.getAsFile())});
+document.getElementById('gen').onclick=generate;
+document.getElementById('int').oninput=e=>{document.getElementById('iv').textContent=e.target.value};
+document.getElementById('int').onchange=generate;
+document.getElementById('dl').onclick=()=>{const a=document.createElement('a');a.download='bugado-'+seed+'.png';a.href=cv.toDataURL('image/png');a.click()};
+generate();
+</script>
+</body>
+</html>
